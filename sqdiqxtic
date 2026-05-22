@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe vs AI</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        /* Mode Selector Styling */
+        .mode-container {
+            margin-bottom: 15px;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border: 2px solid #3b82f6;
+            background-color: white;
+            color: #3b82f6;
+            cursor: pointer;
+            border-radius: 20px;
+            transition: all 0.2s ease;
+            margin: 0 5px;
+        }
+
+        .mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .status {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #666;
+            font-weight: 600;
+            height: 30px; /* Prevents layout shifting */
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-template-rows: repeat(3, 100px);
+            gap: 8px;
+            background-color: #ccc;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cell {
+            background-color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+
+        .cell:hover {
+            background-color: #eef2f7;
+        }
+
+        .cell.x, .cell.o {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .cell.x { color: #3b82f6; }
+        .cell.o { color: #ef4444; }
+
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .cell.winner {
+            animation: winPulse 0.6s ease-in-out infinite alternate;
+            background-color: #fef08a !important;
+        }
+
+        @keyframes winPulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.05); box-shadow: 0 0 12px rgba(234, 179, 8, 0.6); }
+        }
+
+        .reset-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            background-color: #10b981;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .reset-btn:hover {
+            background-color: #059669;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Tic-Tac-Toe</h1>
+    
+    <div class="mode-container">
+        <button class="mode-btn active" id="pvpBtn">Two Players</button>
+        <button class="mode-btn" id="aiBtn">Play AI</button>
+    </div>
+
+    <div class="status" id="statusText">Player X's turn</div>
+    
+    <div class="board" id="board">
+        <button class="cell" data-index="0"></button>
+        <button class="cell" data-index="1"></button>
+        <button class="cell" data-index="2"></button>
+        <button class="cell" data-index="3"></button>
+        <button class="cell" data-index="4"></button>
+        <button class="cell" data-index="5"></button>
+        <button class="cell" data-index="6"></button>
+        <button class="cell" data-index="7"></button>
+        <button class="cell" data-index="8"></button>
+    </div>
+
+    <button class="reset-btn" id="resetBtn">Restart Game</button>
+
+    <script>
+        const board = document.getElementById('board');
+        const cells = document.querySelectorAll('.cell');
+        const statusText = document.getElementById('statusText');
+        const resetBtn = document.getElementById('resetBtn');
+        const pvpBtn = document.getElementById('pvpBtn');
+        const aiBtn = document.getElementById('aiBtn');
+
+        let currentPlayer = 'X';
+        let gameState = ["", "", "", "", "", "", "", "", ""];
+        let isGameActive = true;
+        let vsAI = false; // Tracks if game mode is against computer
+
+        const moveSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav');
+        const winSound = new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-84.wav');
+        const drawSound = new Audio('https://assets.mixkit.co/active_storage/sfx/911/911-84.wav');
+        
+        moveSound.volume = 0.4;
+        winSound.volume = 0.5;
+
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], 
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], 
+            [0, 4, 8], [2, 4, 6]             
+        ];
+
+        function handleCellClick(e) {
+            const clickedCell = e.target;
+            if (!clickedCell.classList.contains('cell')) return;
+            
+            const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
+
+            // Block clicks if square full, game inactive, or if it's currently the AI's turn
+            if (gameState[clickedCellIndex] !== "" || !isGameActive || (vsAI && currentPlayer === 'O')) return;
+
+            makeMove(clickedCellIndex);
+
+            // If playing vs AI and game isn't over, trigger AI turn
+            if (vsAI && isGameActive && currentPlayer === 'O') {
+                statusText.textContent = "AI is thinking...";
+                setTimeout(makeAIMove, 500); // 500ms realistic delay
+            }
+        }
+
+        function makeMove(index) {
+            moveSound.currentTime = 0;
+            moveSound.play();
+
+            gameState[index] = currentPlayer;
+            cells[index].textContent = currentPlayer;
+            cells[index].classList.add(currentPlayer.toLowerCase());
+
+            checkResult();
+        }
+
+        function makeAIMove() {
+            if (!isGameActive) return;
+
+            let targetIndex = -1;
+
+            // Strategy 1: Check if AI can win on this turn
+            targetIndex = findWinningMove('O');
+
+            // Strategy 2: If AI can't win, block the player (X) from winning
+            if (targetIndex === -1) {
+                targetIndex = findWinningMove('X');
+            }
+
+            // Strategy 3: Grab the center square if available
+            if (targetIndex === -1 && gameState[4] === "") {
+                targetIndex = 4;
+            }
+
+            // Strategy 4: Pick a random remaining square
+            if (targetIndex === -1) {
+                const emptyIndices = gameState.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
+                if (emptyIndices.length > 0) {
+                    targetIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+                }
+            }
+
+            if (targetIndex !== -1) {
+                makeMove(targetIndex);
+            }
+        }
+
+        // Helper function for AI: looks for a line with 2 of the target mark and 1 empty space
+        function findWinningMove(playerMark) {
+            for (let i = 0; i < winningConditions.length; i++) {
+                const [a, b, c] = winningConditions[i];
+                const values = [gameState[a], gameState[b], gameState[c]];
+                
+                const matchCount = values.filter(v => v === playerMark).length;
+                const emptyCount = values.filter(v => v === "").length;
+
+                if (matchCount === 2 && emptyCount === 1) {
+                    if (gameState[a] === "") return a;
+                    if (gameState[b] === "") return b;
+                    if (gameState[c] === "") return c;
+                }
+            }
+            return -1;
+        }
+
+        function checkResult() {
+            let roundWon = false;
+            let winningLine = [];
+
+            for (let i = 0; i < winningConditions.length; i++) {
+                const [a, b, c] = winningConditions[i];
+                if (gameState[a] === "" || gameState[b] === "" || gameState[c] === "") continue;
+                if (gameState[a] === gameState[b] && gameState[b] === gameState[c]) {
+                    roundWon = true;
+                    winningLine = [a, b, c];
+                    break;
+                }
+            }
+
+            if (roundWon) {
+                statusText.textContent = vsAI && currentPlayer === 'O' ? "AI Wins! 🤖" : `Player ${currentPlayer} Wins! 🎉`;
+                isGameActive = false;
+                winSound.play();
+                winningLine.forEach(index => cells[index].classList.add('winner'));
+                return;
+            }
+
+            if (!gameState.includes("")) {
+                statusText.textContent = "It's a Draw! 🤝";
+                isGameActive = false;
+                drawSound.play();
+                return;
+            }
+
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            statusText.textContent = vsAI && currentPlayer === 'O' ? "AI is thinking..." : `Player ${currentPlayer}'s turn`;
+        }
+
+        function resetGame() {
+            currentPlayer = 'X';
+            gameState = ["", "", "", "", "", "", "", "", ""];
+            isGameActive = true;
+            statusText.textContent = "Player X's turn";
+            cells.forEach(cell => {
+                cell.textContent = "";
+                cell.classList.remove('x', 'o', 'winner');
+            });
+        }
+
+        // Mode Switching
+        pvpBtn.addEventListener('click', () => {
+            vsAI = false;
+            pvpBtn.classList.add('active');
+            aiBtn.classList.remove('active');
+            resetGame();
+        });
+
+        aiBtn.addEventListener('click', () => {
+            vsAI = true;
+            aiBtn.classList.add('active');
+            pvpBtn.classList.remove('active');
+            resetGame();
+        });
+
+        board.addEventListener('click', handleCellClick);
+        resetBtn.addEventListener('click', resetGame);
+    </script>
+</body>
+</html>
+
